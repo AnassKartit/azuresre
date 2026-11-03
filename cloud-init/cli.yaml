@@ -1,0 +1,41 @@
+#cloud-config
+# Every 2 minutes, try SMTP (587 and 25) and the web app, and log one line per check to syslog
+# with the tag "lab-probe". The lines reach Log Analytics (Syslog table) through the Azure Monitor agent.
+package_update: true
+packages:
+  - netcat-openbsd
+  - curl
+
+write_files:
+  - path: /usr/local/bin/lab-probe
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      check_tcp() {
+        if nc -z -w 5 "$1" "$2" 2>/dev/null; then r=open; else r=blocked; fi
+        logger -t lab-probe "check=tcp target=$1 port=$2 result=$r"
+      }
+      check_tcp smtp.office365.com 587
+      check_tcp smtp.office365.com 25
+      code=$(curl -s -o /dev/null -w '%%{http_code}' --max-time 15 https://${webapp_host}/ || echo 000)
+      logger -t lab-probe "check=http target=${webapp_host} status=$code"
+  - path: /etc/systemd/system/lab-probe.service
+    content: |
+      [Unit]
+      Description=Lab connectivity probe
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/lab-probe
+  - path: /etc/systemd/system/lab-probe.timer
+    content: |
+      [Unit]
+      Description=Run the lab connectivity probe every 2 minutes
+      [Timer]
+      OnBootSec=1min
+      OnUnitActiveSec=2min
+      [Install]
+      WantedBy=timers.target
+
+runcmd:
+  - systemctl daemon-reload
+  - systemctl enable --now lab-probe.timer

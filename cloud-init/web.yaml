@@ -1,0 +1,7 @@
+#cloud-config
+# Tools used by the CPU and disk scenarios (started on demand by scripts/fault-*.sh).
+package_update: true
+packages:
+  - stress-ng
+  - fio
+  - nginx
